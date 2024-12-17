@@ -39,7 +39,9 @@ class MNISTDataset:
             yield x, y
 
     @classmethod
-    def from_directory(cls, directory: Path, max_samples: int | None = None):
+    def from_directory(
+        cls, directory: Path, max_samples: int | None = None
+    ) -> "MNISTDataset":
         classes_dir = [d for d in directory.glob("*") if d.is_dir()]
 
         paths = [
