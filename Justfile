@@ -15,10 +15,4 @@ tests:
 
 # Pip-related.
 compile-requirements:
-    uv pip freeze | uv pip compile --extra-index-url https://pypi.nvidia.com - -o requirements.txt
-
-uv-pip:
-    uv pip install --extra-index-url https://pypi.nvidia.com -r requirements.txt
-
-uv-pip-upgrade:
-    uv pip install -U --extra-index-url https://pypi.nvidia.com jax[cuda12] equinox jaxtyping wandb hydra-core optax scipy tqdm networkx[default] nx-cugraph-cu12 beartype einops pytest
+    uv pip freeze | uv pip compile - -o requirements.txt
