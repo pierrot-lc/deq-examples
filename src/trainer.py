@@ -69,7 +69,7 @@ class Trainer(eqx.Module):
             "train": self.eval(model, train_dataset, key=next(keys)),
             "test": self.eval(model, test_dataset, key=next(keys)),
         }
-        logger.log(metrics, step=iter_id)
+        logger.log(metrics, step=self.total_iters)
 
     def eval(
         self, model: ConvNet, dataset: MNISTDataset, *, key: PRNGKeyArray
