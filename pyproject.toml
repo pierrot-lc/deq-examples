@@ -31,3 +31,6 @@ ignore = [
     "E731",  # Ignore lambda assignements (why is this even a thing?).
 ]
 
+[tool.basedpyright]
+typeCheckingMode = "basic"
+
