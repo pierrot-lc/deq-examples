@@ -1,12 +1,11 @@
-from src.trainer import Trainer
+import hydra
+import wandb
+from configs import MainConfig
+from omegaconf import DictConfig, OmegaConf
+from optax import adamw
 from src.datasets import MNISTDataset
 from src.model import ConvNet
-import hydra
-from omegaconf import DictConfig, OmegaConf
-from configs import MainConfig
-from optax import adamw
-
-import wandb
+from src.trainer import Trainer
 
 
 @hydra.main(config_path="configs", config_name="default", version_base="1.3")
