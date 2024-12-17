@@ -1,5 +1,7 @@
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Self
 
 import jax.numpy as jnp
 import jax.random as jr
@@ -8,16 +10,13 @@ from PIL import Image
 from tqdm import tqdm
 
 
+@dataclass
 class MNISTDataset:
     images: list[Int[Array, "height width"]]
     classes: list[Int[Array, ""]]
 
-    def __init__(
-        self, images: list[Int, "height width"], classes: list[Int[Array, ""]]
-    ):
-        assert len(images) == len(classes)
-        self.images = images
-        self.classes = classes
+    def __post_init__(self):
+        assert len(self.images) == len(self.classes)
 
     def __len__(self) -> int:
         return len(self.images)
@@ -39,9 +38,7 @@ class MNISTDataset:
             yield x, y
 
     @classmethod
-    def from_directory(
-        cls, directory: Path, max_samples: int | None = None
-    ) -> "MNISTDataset":
+    def from_directory(cls, directory: Path, max_samples: int | None = None) -> Self:
         classes_dir = [d for d in directory.glob("*") if d.is_dir()]
 
         paths = [

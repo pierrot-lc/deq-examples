@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, Self
 
 import jax.random as jr
 from hydra.utils import to_absolute_path
 from jaxtyping import PRNGKeyArray
+from omegaconf import DictConfig
 
 
 @dataclass
@@ -14,11 +16,11 @@ class DatasetConfig:
     train_path: Path
 
     def __post_init__(self):
-        self.train_path = to_absolute_path(self.train_path)
-        self.train_path = Path(self.train_path)
+        train_path = to_absolute_path(str(self.train_path))
+        self.train_path = Path(train_path)
 
-        self.test_path = to_absolute_path(self.test_path)
-        self.test_path = Path(self.test_path)
+        test_path = to_absolute_path(str(self.test_path))
+        self.test_path = Path(test_path)
 
 
 @dataclass
@@ -53,7 +55,7 @@ class TrainerConfig:
 class WandBConfig:
     entity: str
     group: str
-    mode: str
+    mode: Literal["online", "offline", "disabled"]
 
 
 @dataclass
@@ -65,11 +67,11 @@ class MainConfig:
     wandb: WandBConfig
 
     @classmethod
-    def from_dict(cls, config: dict) -> "MainConfig":
+    def from_dict(cls, config: DictConfig) -> Self:
         return cls(
-            DatasetConfig(**config["dataset"]),
-            ModelConfig(**config["model"]),
-            OptimizerConfig(**config["optimizer"]),
-            TrainerConfig(**config["trainer"]),
-            WandBConfig(**config["wandb"]),
+            dataset=DatasetConfig(**config.dataset),
+            model=ModelConfig(**config.model),
+            optimizer=OptimizerConfig(**config.optimizer),
+            trainer=TrainerConfig(**config.trainer),
+            wandb=WandBConfig(**config.wandb),
         )
