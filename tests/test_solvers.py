@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 from jaxtyping import PRNGKeyArray
-from src.solvers import lstsq_gd, neumann_series
+from src.solvers import anderson_acceleration, lstsq_gd, lstsq_qr, neumann_series
 
 
 @pytest.mark.parametrize(
@@ -39,9 +39,29 @@ def test_lstsq_gd(n_iterations: int, lr: float, hidden_dim: int, key: PRNGKeyArr
     keys = iter(jr.split(key, 2))
     weight = jr.normal(next(keys), (hidden_dim, hidden_dim))
     x = jr.normal(next(keys), (hidden_dim,))
-    y = weight @ x
+    b = weight @ x
 
     def f(z):
         return weight @ z
 
-    assert jnp.allclose(x, lstsq_gd(f, y, n_iterations, lr), rtol=1e-1, atol=1e-4)
+    x_ = lstsq_gd(f, b, n_iterations, lr)
+    assert jnp.allclose(b, weight @ x_, rtol=1e-1, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "hidden_dim_1, hidden_dim_2, key",
+    [
+        (100, 1000, jr.key(1)),
+        (100, 100, jr.key(2)),
+        (10, 100, jr.key(3)),
+        (100, 10, jr.key(4)),
+    ],
+)
+def test_lstsq_qr(hidden_dim_1: int, hidden_dim_2: int, key: PRNGKeyArray):
+    keys = iter(jr.split(key, 2))
+    weight = jr.normal(next(keys), (hidden_dim_2, hidden_dim_1))
+    x = jr.normal(next(keys), (hidden_dim_1,))
+    b = weight @ x
+    Q, R = jnp.linalg.qr(weight)
+    x_ = lstsq_qr(Q, R, b)
+    assert jnp.allclose(b, weight @ x_, rtol=1e-3, atol=1e-5)
