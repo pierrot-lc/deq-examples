@@ -3,7 +3,13 @@ import jax.numpy as jnp
 import jax.random as jr
 import pytest
 from jaxtyping import PRNGKeyArray
-from src.solvers import anderson_acceleration, lstsq_gd, lstsq_qr, neumann_series
+from src.solvers import (
+    anderson_acceleration,
+    lstsq_gd,
+    lstsq_qr,
+    neumann_series,
+    root_lbfgs,
+)
 
 
 @pytest.mark.parametrize(
@@ -89,3 +95,22 @@ def test_anderson_acceleration(
     x = jnp.zeros((hidden_dim,))
     x = anderson_acceleration(model, x, n_iterations=n_iterations, m=m)
     assert jnp.allclose(x, model(x), rtol=1e-1, atol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "hidden_dim, n_iterations, key",
+    [
+        (16, 100, jr.key(1)),
+        (64, 100, jr.key(2)),
+        (256, 100, jr.key(3)),
+    ],
+)
+def test_root_lbfgs(hidden_dim: int, n_iterations: int, key: PRNGKeyArray):
+    model = nn.Linear(hidden_dim, hidden_dim, key=key)
+
+    def f_root(x):
+        return model(x) - x
+
+    x = jnp.zeros((hidden_dim,))
+    x = root_lbfgs(f_root, x, n_iterations)
+    assert jnp.allclose(f_root(x), jnp.zeros_like(x), rtol=1e-4, atol=1e-4)
