@@ -1,3 +1,4 @@
+import equinox.nn as nn
 import jax.numpy as jnp
 import jax.random as jr
 import pytest
@@ -65,3 +66,26 @@ def test_lstsq_qr(hidden_dim_1: int, hidden_dim_2: int, key: PRNGKeyArray):
     Q, R = jnp.linalg.qr(weight)
     x_ = lstsq_qr(Q, R, b)
     assert jnp.allclose(b, weight @ x_, rtol=1e-3, atol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "hidden_dim, n_iterations, m, key",
+    [
+        (16, 100, 3, jr.key(1)),
+        (64, 200, 10, jr.key(2)),
+        (256, 1_000, 10, jr.key(3)),
+    ],
+)
+def test_anderson_acceleration(
+    hidden_dim: int, n_iterations: int, m: int, key: PRNGKeyArray
+):
+    model = nn.Sequential(
+        [
+            nn.Linear(hidden_dim, hidden_dim, key=key),
+            nn.LayerNorm(hidden_dim),
+        ]
+    )
+
+    x = jnp.zeros((hidden_dim,))
+    x = anderson_acceleration(model, x, n_iterations=n_iterations, m=m)
+    assert jnp.allclose(x, model(x), rtol=1e-1, atol=1e-3)
