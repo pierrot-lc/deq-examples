@@ -24,6 +24,12 @@ class DatasetConfig:
 
 
 @dataclass
+class ImplicitConfig:
+    solve_method: str
+    tangent_solve_method: str
+
+
+@dataclass
 class ModelConfig:
     n_channels: int
     kernel_size: int
@@ -44,6 +50,7 @@ class TrainerConfig:
     batch_size: int
     eval_freq: int
     eval_iters: int
+    gamma: float
     key: PRNGKeyArray
     total_iters: int
 
@@ -61,6 +68,7 @@ class WandBConfig:
 @dataclass
 class MainConfig:
     dataset: DatasetConfig
+    implicit: ImplicitConfig
     model: ModelConfig
     optimizer: OptimizerConfig
     trainer: TrainerConfig
@@ -70,6 +78,7 @@ class MainConfig:
     def from_dict(cls, config: DictConfig) -> Self:
         return cls(
             dataset=DatasetConfig(**config.dataset),
+            implicit=ImplicitConfig(**config.implicit),
             model=ModelConfig(**config.model),
             optimizer=OptimizerConfig(**config.optimizer),
             trainer=TrainerConfig(**config.trainer),

@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import equinox as eqx
 import jax
@@ -12,6 +12,7 @@ from wandb.data_types import WBValue
 from wandb.wandb_run import Run
 
 from .datasets import MNISTDataset
+from .implicit import FixedPointSolver
 from .model import ConvNet
 
 
@@ -19,7 +20,9 @@ class Trainer(eqx.Module):
     batch_size: int
     eval_freq: int
     eval_iters: int
+    gamma: float
     optimizer: optax.GradientTransformation
+    solver: FixedPointSolver
     total_iters: int
 
     def train(
@@ -54,14 +57,15 @@ class Trainer(eqx.Module):
             desc="Training",
             total=self.total_iters,
         ):
-            if iter_id % self.eval_freq == 0:
-                metrics = {
-                    "train": self.eval(model, train_dataset, key=next(keys)),
-                    "test": self.eval(model, test_dataset, key=next(keys)),
-                }
-                logger.log(metrics, step=iter_id)
+            # if iter_id % self.eval_freq == 0:
+            #     metrics = {
+            #         "train": self.eval(model, train_dataset, key=next(keys)),
+            #         "test": self.eval(model, test_dataset, key=next(keys)),
+            #     }
+            #     print(metrics)
+            #     logger.log(metrics, step=iter_id)
 
-            model, opt_state = self.batch_update(model, x, y, opt_state)
+            model, opt_state = self.batch_update(model, x, y, opt_state, next(keys))
             assert Trainer.is_finite(model), "Non-finite weights!"
 
         # Final evals.
@@ -77,7 +81,7 @@ class Trainer(eqx.Module):
         keys = Trainer.keys_generator(key)
 
         metrics = [
-            self.batch_metrics(model, x, y)
+            self.batch_metrics(model, x, y, next(keys))
             for x, y in tqdm(
                 dataset.dataloader(self.batch_size, self.eval_iters, key=next(keys)),
                 desc="Eval",
@@ -98,11 +102,17 @@ class Trainer(eqx.Module):
         x: Float[Array, "batch_size height width"],
         y: Int[Array, " batch_size"],
         opt_state: optax.OptState,
+        key: PRNGKeyArray,
     ) -> tuple[ConvNet, optax.OptState]:
         def batch_loss(model: ConvNet) -> Scalar:
-            y_hat = eqx.filter_vmap(model)(x)
+            y_hat, x_eq = eqx.filter_vmap(model)(x, self.solver)
             losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
-            return losses.mean()
+
+            reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(
+                model.deq, x_eq, jr.split(key, len(y))
+            )
+            reg = jnp.mean(reg) / jnp.prod(jnp.array(x_eq.shape[1:]))
+            return losses.mean() + self.gamma * reg
 
         grads = eqx.filter_grad(batch_loss)(model)
         updates, opt_state = self.optimizer.update(
@@ -118,11 +128,22 @@ class Trainer(eqx.Module):
         model: ConvNet,
         x: Float[Array, "batch_size height width"],
         y: Int[Array, " batch_size"],
+        key: PRNGKeyArray,
     ) -> dict[str, Float[Array, " batch_size"]]:
-        y_hat = eqx.filter_vmap(model)(x)
+        y_hat, x_eq = eqx.filter_vmap(model)(x, self.solver)
+        x_root = eqx.filter_vmap(model.deq)(x_eq) - x_eq
+        x_root = x_root.reshape((len(x_root), -1))
+
+        reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(
+            model.deq, x_eq, jr.split(key, len(y))
+        )
+        reg = reg / jnp.prod(jnp.array(x_eq.shape[1:]))
+
         return {
             "loss": optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y),
+            "jac-reg": reg,
             "acc": (y_hat.argmax(axis=1) == y).astype(float),
+            "root": jnp.max(jnp.abs(x_root), axis=1),
         }
 
     @staticmethod
@@ -158,3 +179,25 @@ class Trainer(eqx.Module):
         while True:
             key, sk = jr.split(key)
             yield sk
+
+    @staticmethod
+    def hutchinson_estimate(f: Callable, x: Array, key: PRNGKeyArray) -> Array:
+        """Estimate the trace of the jacobian of f evaluated at x.
+
+        ---
+        Args:
+            f: The function f.
+            x: The point to which evaluate the jacobian.
+            key: Some random key used for the estimate.
+
+        ---
+        Returns:
+            The trace estimate: tr(Jf(x) @ Jf(x).T).
+
+        ---
+        Sources:
+            Paper: https://proceedings.mlr.press/v139/bai21b.html
+        """
+        eps = jr.normal(key, x.shape)
+        (_, estimate) = jax.jvp(f, primals=(x,), tangents=(eps,))
+        return jnp.sum(estimate**2)
