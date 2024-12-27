@@ -12,7 +12,7 @@ from wandb.data_types import WBValue
 from wandb.wandb_run import Run
 
 from .datasets import MNISTDataset
-from .implicit import FixedPointSolver
+from .solvers import Solver
 from .model import ConvNet
 
 
@@ -22,7 +22,7 @@ class Trainer(eqx.Module):
     eval_iters: int
     gamma: float
     optimizer: optax.GradientTransformation
-    solver: FixedPointSolver
+    solver: Solver
     total_iters: int
 
     def train(
@@ -57,13 +57,13 @@ class Trainer(eqx.Module):
             desc="Training",
             total=self.total_iters,
         ):
-            # if iter_id % self.eval_freq == 0:
-            #     metrics = {
-            #         "train": self.eval(model, train_dataset, key=next(keys)),
-            #         "test": self.eval(model, test_dataset, key=next(keys)),
-            #     }
-            #     print(metrics)
-            #     logger.log(metrics, step=iter_id)
+            if iter_id % self.eval_freq == 0:
+                metrics = {
+                    "train": self.eval(model, train_dataset, key=next(keys)),
+                    "test": self.eval(model, test_dataset, key=next(keys)),
+                }
+                print(metrics)
+                logger.log(metrics, step=iter_id)
 
             model, opt_state = self.batch_update(model, x, y, opt_state, next(keys))
             assert Trainer.is_finite(model), "Non-finite weights!"

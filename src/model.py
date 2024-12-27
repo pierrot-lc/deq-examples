@@ -6,7 +6,8 @@ import jax.random as jr
 from beartype import beartype
 from jaxtyping import Array, Float, PRNGKeyArray, jaxtyped
 
-from .implicit import FixedPointSolver
+from .implicit import fixed_point
+from .solvers import Solver
 
 
 class ConvNet(eqx.Module):
@@ -34,10 +35,22 @@ class ConvNet(eqx.Module):
 
     @jaxtyped(typechecker=beartype)
     def __call__(
-        self, x: Float[Array, "height width"], solver: FixedPointSolver
+        self, x: Float[Array, "height width"], solver: Solver
     ) -> tuple[Float[Array, " n_classes"], Array]:
         x = einops.rearrange(x, "h w -> 1 h w")
         x = self.project(x)
-        x_eq = solver(self.deq, x)
-        x = einops.reduce(x_eq, "c h w -> c", "mean")
-        return self.classify(x), x_eq
+
+        dynamic, static = eqx.partition(self.deq, eqx.is_array)
+        shape = x.shape
+
+        def f(x_flatten, dynamic):
+            deq = eqx.combine(dynamic, static)
+            x = x_flatten.reshape(shape)
+            x = deq(x)
+            return x.flatten()
+
+        f_, args = jax.closure_convert(f, x.flatten(), dynamic)
+        x_star = fixed_point(f_, solver, x.flatten(), dynamic, args)
+        x_star = x_star.reshape(shape)
+        x = einops.reduce(x_star, "c h w -> c", "mean")
+        return self.classify(x), x_star

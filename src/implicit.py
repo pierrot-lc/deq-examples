@@ -1,79 +1,56 @@
 from collections.abc import Callable
+from functools import partial
+from typing import Any
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jaxtyping import Array
+from jaxtyping import Array, PyTree
 
-from .solvers import (
-    anderson_acceleration,
-    fixed_point_iterations,
-    lstsq_qr,
-    neumann_series,
-    root_lbfgs,
-)
+from .solvers import Solver
 
 
-class FixedPointSolver(eqx.Module):
-    solve_method: str = eqx.field(static=True)
-    tangent_solve_method: str = eqx.field(static=True)
+@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 4))
+def fixed_point(f: Callable, solver: Solver, x: Array, a: PyTree, args: Any) -> Array:
+    """Compute the fixed point of `f`.
+    Use implicit differientation for the reverse vjp.
 
-    def __call__(self, f: Callable, x: Array) -> Array:
-        x_shape = x.shape
+    ---
+    Args:
+        f: The function for which we want to find the fixed point.
+        solver: The solver used for the finding the fixed point.
+        x: Initial guess for the fixed point.
+        a: PyTree of derivable parameters.
+        args: Auxiliary arguments that the function `f` might need.
 
-        def f_flatten(x_flatten: Array) -> Array:
-            y = f(x_flatten.reshape(x_shape))
-            return y.flatten()
+    ---
+    Returns:
+        The estimated fixed point.
 
-        def f_root(x_flatten: Array) -> Array:
-            return f_flatten(x_flatten) - x_flatten
+    ---
+    Sources:
+        https://jax.readthedocs.io/en/latest/notebooks/Custom_derivative_rules_for_Python_code.html#implicit-function-differentiation-of-iterative-implementations
+    """
+    return solver(lambda x, *args: f(x, a, *args), x, *args)
 
-        def solve_fn(_: Callable, x_flatten: Array) -> Array:
-            match self.solve_method:
-                case "l-bfgs":
-                    return root_lbfgs(f_root, x_flatten, n_iterations=1000)
-                case "anderson":
-                    return anderson_acceleration(
-                        f_flatten, x_flatten, n_iterations=100, m=10
-                    )
-                case "fixed-point":
-                    return fixed_point_iterations(
-                        f_flatten, x_flatten, n_iterations=1000
-                    )
-                case _:
-                    raise ValueError("Unknown solve method")
 
-        def tangent_solve_fn(g: Callable, y: Array) -> Array:
-            match self.tangent_solve_method:
-                case "exact":
-                    A = jax.jacobian(g)(y)
-                    x = jnp.linalg.solve(A, y)
-                    return x
-                case "qr":
-                    A = jax.jacobian(g)(y)
-                    Q, R = jnp.linalg.qr(A)
-                    x = lstsq_qr(Q, R, y)
-                    return x
-                case "neumann":
+def fixed_point_fwd(
+    f: Callable, solver: Solver, x: Array, a: PyTree, args: Any
+) -> tuple[Array, tuple[Array, PyTree]]:
+    x_star = solver(lambda x, *args: f(x, a, *args), x, *args)
+    return x_star, (x_star, a)
 
-                    def f(x):
-                        return x - g(x)
 
-                    return neumann_series(f, y, n_iterations=3)
-                case "anderson":
+def fixed_point_bwd(
+    f: Callable, solver: Solver, args: Any, res: tuple[Array, PyTree], v: Array
+) -> tuple[Array, PyTree]:
+    """Use the maths notations from the jax tutorial on implicit diff."""
+    x_star, a = res
+    _, A = jax.vjp(lambda x: f(x, a, *args), x_star)
+    _, B = jax.vjp(lambda a: f(x_star, a, *args), a)
 
-                    def f(x):
-                        """Ax = y <=> Ax + x - y = x."""
-                        return g(x) + x - y
+    w = solver(lambda w, *aux: v + A(w)[0], v, *args)
+    a_bar = B(w)[0]
+    return jnp.zeros_like(x_star), a_bar
 
-                    return anderson_acceleration(g, y, n_iterations=10, m=3)
-                case _:
-                    raise ValueError("Unknown tangent solve method")
 
-        x_star = jax.lax.custom_root(
-            f_root,
-            initial_guess=x.flatten(),
-            solve=solve_fn,
-            tangent_solve=tangent_solve_fn,
-        )
-        return x_star.reshape(x_shape)
+fixed_point.defvjp(fixed_point_fwd, fixed_point_bwd)

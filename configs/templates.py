@@ -25,8 +25,8 @@ class DatasetConfig:
 
 @dataclass
 class ImplicitConfig:
-    solve_method: str
-    tangent_solve_method: str
+    n_iterations: int
+    anderson_m: int
 
 
 @dataclass

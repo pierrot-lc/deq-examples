@@ -4,7 +4,7 @@ from configs import MainConfig
 from omegaconf import DictConfig, OmegaConf
 from optax import adamw
 from src.datasets import MNISTDataset
-from src.implicit import FixedPointSolver
+from src.solvers import Solver
 from src.model import ConvNet
 from src.trainer import Trainer
 
@@ -33,9 +33,7 @@ def main(dict_config: DictConfig):
         case _:
             raise ValueError(f"Unknown optimizer: {config.optimizer.name}")
 
-    solver = FixedPointSolver(
-        config.implicit.solve_method, config.implicit.tangent_solve_method
-    )
+    solver = Solver(config.implicit.n_iterations, config.implicit.anderson_m)
 
     trainer = Trainer(
         config.trainer.batch_size,

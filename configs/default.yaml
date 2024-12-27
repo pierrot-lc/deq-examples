@@ -1,14 +1,14 @@
 ---
 
 dataset:
-  max_samples: 10
+  max_samples: null
   n_classes: 10
   test_path: ./data/mnist/test/
   train_path: ./data/mnist/train/
 
 implicit:
-  solve_method: anderson
-  tangent_solve_method: anderson
+  n_iterations: 10
+  anderson_m: 3
 
 model:
   n_channels: 12
@@ -20,10 +20,10 @@ optimizer:
   name: adamw
 
 trainer:
-  batch_size: 4
+  batch_size: 32
   eval_freq: 100
-  eval_iters: 4
-  gamma: 0.01
+  eval_iters: 5
+  gamma: 0.00
   key: 0
   total_iters: 10_000
 
