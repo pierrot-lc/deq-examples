@@ -111,12 +111,8 @@ def lstsq_qr(
 
 
 def anderson_acceleration(
-    f: Callable,
-    x0: Float[Array, " hidden_dim"],
-    n_iterations: int,
-    m: int,
-    *args: list[Any],
-) -> Float[Array, " hidden_dim"]:
+    f: Callable, x0: Array, n_iterations: int, m: int, beta: float
+) -> Array:
     """Use Anderson acceleration to find the fixed point of f.
 
     ---
@@ -125,7 +121,7 @@ def anderson_acceleration(
         x0: The initial guess.
         n_iterations: Number of Anderson steps.
         m: Size of the history.
-        *args: Extra args for `f`. Typically coming from `jax.closure_convert`.
+        beta: Damping factor.
 
     ---
     Returns:
@@ -138,7 +134,12 @@ def anderson_acceleration(
         Easier pseudo-code: https://ctk.math.ncsu.edu/TALKS/Anderson.pdf
     """
     assert m > 2
-    beta = 0.5
+    assert 0 < beta <= 1
+
+    # Flattened version of f.
+    x_shape = x0.shape
+    f_flatten = lambda x: f(x.reshape(x_shape)).flatten()
+    x0 = x0.flatten()
 
     def body_fn(k: int, carry: tuple[Array, Array, Array]) -> tuple:
         X, G, F = carry
@@ -152,7 +153,7 @@ def anderson_acceleration(
         # gammas, *_ = jnp.linalg.lstsq(dF.T, fk)
         xkp1 = gk - dG.T @ gammas
         xkp1 = xkp1 - (1 - beta) * (fk - dF.T @ gammas)
-        gkp1 = f(xkp1, *args)
+        gkp1 = f_flatten(xkp1)
 
         X = X.at[(k + 1) % m].set(xkp1)
         G = G.at[(k + 1) % m].set(gkp1)
@@ -162,10 +163,10 @@ def anderson_acceleration(
     (h,) = x0.shape
     X = jnp.zeros((m, h), x0.dtype)
     X = X.at[0].set(x0)
-    G = jax.vmap(f)(X, *args)
+    G = jax.vmap(f_flatten)(X)
     F = G - X
     X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
-    return X[(n_iterations + 1) % m]
+    return X[(n_iterations + 1) % m].reshape(x_shape)
 
 
 def root_lbfgs(f: Callable, x: PyTree, n_iterations: int, *args: list[Any]) -> PyTree:
@@ -214,6 +215,9 @@ def root_lbfgs(f: Callable, x: PyTree, n_iterations: int, *args: list[Any]) -> P
 class Solver(eqx.Module):
     n_iterations: int = eqx.field(static=True)
     anderson_m: int = eqx.field(static=True)
+    anderson_b: float = eqx.field(static=True)
 
-    def __call__(self, f: Callable, x: Array, *args: Any) -> Array:
-        return anderson_acceleration(f, x, self.n_iterations, self.anderson_m, *args)
+    def __call__(self, f: Callable, x: Array) -> Array:
+        return anderson_acceleration(
+            f, x, self.n_iterations, self.anderson_m, self.anderson_b
+        )

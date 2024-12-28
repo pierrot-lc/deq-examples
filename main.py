@@ -33,7 +33,11 @@ def main(dict_config: DictConfig):
         case _:
             raise ValueError(f"Unknown optimizer: {config.optimizer.name}")
 
-    solver = Solver(config.implicit.n_iterations, config.implicit.anderson_m)
+    solver = Solver(
+        config.implicit.n_iterations,
+        config.implicit.anderson_m,
+        config.implicit.anderson_b,
+    )
 
     trainer = Trainer(
         config.trainer.batch_size,

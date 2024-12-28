@@ -105,7 +105,7 @@ class Trainer(eqx.Module):
         key: PRNGKeyArray,
     ) -> tuple[ConvNet, optax.OptState]:
         def batch_loss(model: ConvNet) -> Scalar:
-            y_hat, x_eq = eqx.filter_vmap(model)(x, self.solver)
+            y_hat, x_eq, _ = eqx.filter_vmap(model)(x, self.solver)
             losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
 
             reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(
@@ -130,8 +130,7 @@ class Trainer(eqx.Module):
         y: Int[Array, " batch_size"],
         key: PRNGKeyArray,
     ) -> dict[str, Float[Array, " batch_size"]]:
-        y_hat, x_eq = eqx.filter_vmap(model)(x, self.solver)
-        x_root = eqx.filter_vmap(model.deq)(x_eq) - x_eq
+        y_hat, x_eq, x_root = eqx.filter_vmap(model)(x, self.solver)
         x_root = x_root.reshape((len(x_root), -1))
 
         reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(

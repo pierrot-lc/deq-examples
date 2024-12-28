@@ -75,15 +75,15 @@ def test_lstsq_qr(hidden_dim_1: int, hidden_dim_2: int, key: PRNGKeyArray):
 
 
 @pytest.mark.parametrize(
-    "hidden_dim, n_iterations, m, key",
+    "hidden_dim, n_iterations, m, beta, key",
     [
-        (16, 10, 3, jr.key(1)),
-        (64, 100, 5, jr.key(2)),
-        (256, 200, 5, jr.key(3)),
+        (16, 10, 3, 0.5, jr.key(1)),
+        (64, 100, 5, 0.5, jr.key(2)),
+        (256, 200, 5, 0.5, jr.key(3)),
     ],
 )
 def test_anderson_acceleration(
-    hidden_dim: int, n_iterations: int, m: int, key: PRNGKeyArray
+    hidden_dim: int, n_iterations: int, m: int, beta, key: PRNGKeyArray
 ):
     model = nn.Sequential(
         [
@@ -93,7 +93,7 @@ def test_anderson_acceleration(
     )
 
     x = jnp.zeros((hidden_dim,))
-    x = anderson_acceleration(model, x, n_iterations=n_iterations, m=m)
+    x = anderson_acceleration(model, x, n_iterations=n_iterations, m=m, beta=beta)
     residuals = jnp.max(jnp.abs(x - model(x)))
     assert residuals < 0.1
 

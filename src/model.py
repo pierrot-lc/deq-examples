@@ -4,7 +4,7 @@ import equinox.nn as nn
 import jax
 import jax.random as jr
 from beartype import beartype
-from jaxtyping import Array, Float, PRNGKeyArray, jaxtyped
+from jaxtyping import Array, Float, PRNGKeyArray, PyTree, jaxtyped
 
 from .implicit import fixed_point
 from .solvers import Solver
@@ -40,21 +40,19 @@ class ConvNet(eqx.Module):
     @jaxtyped(typechecker=beartype)
     def __call__(
         self, x: Float[Array, "height width"], solver: Solver
-    ) -> tuple[Float[Array, " n_classes"], Array]:
+    ) -> tuple[Float[Array, " n_classes"], Array, Array]:
         x = einops.rearrange(x, "h w -> 1 h w")
-        x = self.project(x)
+        x_proj = self.project(x)
 
-        dynamic, static = eqx.partition(self.deq, eqx.is_array)
-        shape = x.shape
+        params, static = eqx.partition(self.deq, eqx.is_array)
 
-        def f(x_flatten, dynamic):
-            deq = eqx.combine(dynamic, static)
-            x = x_flatten.reshape(shape)
-            x = deq(x)
-            return x.flatten()
+        def f(x: Array, a: PyTree) -> Array:
+            params, x_init = a
+            deq = eqx.combine(params, static)
+            return deq(x) + x_init
 
-        f_, args = jax.closure_convert(f, x.flatten(), dynamic)
-        x_star = fixed_point(f_, solver, x.flatten(), dynamic, args)
-        x_star = x_star.reshape(shape)
+        a = (params, x_proj)
+        x_star = fixed_point(f, solver, x_proj, a)
+        x_root = f(x_star, a) - x_star
         x = einops.reduce(x_star, "c h w -> c", "mean")
-        return self.classify(x), x_star
+        return self.classify(x), x_star, x_root

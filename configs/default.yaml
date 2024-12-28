@@ -9,6 +9,7 @@ dataset:
 implicit:
   n_iterations: 100
   anderson_m: 5
+  anderson_b: 0.5
 
 model:
   n_channels: 12

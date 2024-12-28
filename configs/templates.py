@@ -27,6 +27,7 @@ class DatasetConfig:
 class ImplicitConfig:
     n_iterations: int
     anderson_m: int
+    anderson_b: float
 
 
 @dataclass
