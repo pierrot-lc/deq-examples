@@ -11,7 +11,7 @@ from .solvers import Solver
 
 
 class ConvNet(eqx.Module):
-    project: nn.Conv2d
+    project: nn.Sequential
     deq: nn.Sequential
     classify: nn.Linear
 
@@ -19,8 +19,12 @@ class ConvNet(eqx.Module):
         self, n_channels: int, kernel_size: int, n_classes: int, *, key: PRNGKeyArray
     ):
         keys = iter(jr.split(key, 4))
-        self.project = nn.Conv2d(
-            1, n_channels, kernel_size, padding="same", key=next(keys)
+        self.project = nn.Sequential(
+            [
+                nn.Conv2d(1, n_channels, kernel_size=3, stride=3, key=next(keys)),
+                nn.Lambda(jax.nn.gelu),
+                nn.GroupNorm(groups=1, channels=n_channels),
+            ]
         )
         self.deq = nn.Sequential(
             [

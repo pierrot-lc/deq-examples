@@ -7,8 +7,8 @@ dataset:
   train_path: ./data/mnist/train/
 
 implicit:
-  n_iterations: 10
-  anderson_m: 3
+  n_iterations: 100
+  anderson_m: 5
 
 model:
   n_channels: 12
@@ -20,7 +20,7 @@ optimizer:
   name: adamw
 
 trainer:
-  batch_size: 32
+  batch_size: 16
   eval_freq: 100
   eval_iters: 5
   gamma: 0.00

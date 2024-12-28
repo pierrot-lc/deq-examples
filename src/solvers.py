@@ -137,39 +137,33 @@ def anderson_acceleration(
         Pseudo-code: https://en.wikipedia.org/wiki/Anderson_acceleration#Example_MATLAB_implementation
     """
     assert m > 2
+    beta = 0.5
 
-    def body_fn(k: int, carry: tuple[Array, Array, Array, Array]) -> tuple:
-        X, G, Xk, Gk = carry
-        xk, gk = X[k % m], G[k % m]
+    def body_fn(k: int, carry: tuple[Array, Array, Array]) -> tuple:
+        X, G, F = carry
+        gk, fk = G[k % m], F[k % m]
 
-        Q, R = jnp.linalg.qr(Gk)
-        gammas = lstsq_qr(Q, R, gk, lambda_=0.01)
-        # gammas, *_ = jnp.linalg.lstsq(Gk, gk)
-        xkp1 = xk + gk - (Xk + Gk) @ gammas
-        gkp1 = f(xkp1, *args) - xkp1
+        dG = jnp.roll(G, shift=-1, axis=0) - G
+        dF = jnp.roll(F, shift=-1, axis=0) - F
+
+        Q, R = jnp.linalg.qr(dF.T)
+        gammas = lstsq_qr(Q, R, fk, lambda_=1e-3)
+        # gammas, *_ = jnp.linalg.lstsq(dF.T, fk)
+        xkp1 = gk - dG.T @ gammas
+        xkp1 = xkp1 - (1 - beta) * (fk - dF.T @ gammas)
+        gkp1 = f(xkp1, *args)
 
         X = X.at[(k + 1) % m].set(xkp1)
         G = G.at[(k + 1) % m].set(gkp1)
-        Xk = Xk.at[:, (k + 1) % m].set(xkp1 - xk)
-        Gk = Gk.at[:, (k + 1) % m].set(gkp1 - gk)
-
-        return X, G, Xk, Gk
+        F = F.at[(k + 1) % m].set(gkp1 - xkp1)
+        return X, G, F
 
     (h,) = x0.shape
     X = jnp.zeros((m, h), x0.dtype)
     X = X.at[0].set(x0)
-    X = X.at[1].set(f(x0, *args))
-
-    G = jnp.zeros((m, h), x0.dtype)
-    G = G.at[1].set(f(x0, *args) - x0)
-
-    Xk = jnp.zeros((h, m), x0.dtype)
-    Xk = Xk.at[:, 1].set(X[1] - X[0])
-
-    Gk = jnp.zeros((h, m), x0.dtype)
-    Gk = Gk.at[:, 1].set(G[1] - G[0])
-
-    X, *_ = jax.lax.fori_loop(1, n_iterations + 1, body_fn, init_val=(X, G, Xk, Gk))
+    G = jax.vmap(f)(X, *args)
+    F = G - X
+    X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
     return X[(n_iterations + 1) % m]
 
 

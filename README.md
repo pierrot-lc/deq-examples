@@ -10,3 +10,6 @@ Notes:
 - Compiled code can remove unusued lines of code
 - Captured arguments from variables used outside of a locally defined function
   makes the backward pass crash when the function is used within a fori loop.
+  It turns out to be true only when using `jax.lax.custom_root`. If the
+  implicit diff is implemented with `jax.custom_vjp` we can do whatever we want
+  during backward pass!
