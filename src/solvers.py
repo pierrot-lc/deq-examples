@@ -134,7 +134,8 @@ def anderson_acceleration(
     ---
     Sources:
         Paper: https://epubs.siam.org/doi/10.1137/10078356X
-        Pseudo-code: https://en.wikipedia.org/wiki/Anderson_acceleration#Example_MATLAB_implementation
+        Implem details from the same author: https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf
+        Easier pseudo-code: https://ctk.math.ncsu.edu/TALKS/Anderson.pdf
     """
     assert m > 2
     beta = 0.5
