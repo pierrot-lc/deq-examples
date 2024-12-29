@@ -1,25 +1,26 @@
 from collections.abc import Callable
 from functools import partial
-from typing import Any
 
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PyTree
 
-from .solvers import Solver
+from .solvers import FixedPointSolver
 
 
 @partial(jax.custom_vjp, nondiff_argnums=(0, 1))
-def fixed_point(f: Callable, solver: Solver, x: Array, a: PyTree) -> Array:
+def fixed_point(f: Callable, solver: FixedPointSolver, x: Array, a: PyTree) -> Array:
     """Compute the fixed point of `f`.
     Use implicit differientation for the reverse vjp.
 
     ---
     Args:
-        f: The function for which we want to find the fixed point.
+        f: The function for which we want to find the fixed point. Can close over static
+            paramters.
         solver: The solver used for the finding the fixed point.
         x: Initial guess for the fixed point.
-        a: PyTree of differentiable parameters.
+        a: PyTree of differentiable parameters. All dynamic parameters must be passed
+            here.
 
     ---
     Returns:
@@ -33,14 +34,14 @@ def fixed_point(f: Callable, solver: Solver, x: Array, a: PyTree) -> Array:
 
 
 def fixed_point_fwd(
-    f: Callable, solver: Solver, x: Array, a: PyTree
+    f: Callable, solver: FixedPointSolver, x: Array, a: PyTree
 ) -> tuple[Array, tuple[Array, PyTree]]:
     x_star = solver(lambda x: f(x, a), x)
     return x_star, (x_star, a)
 
 
 def fixed_point_bwd(
-    f: Callable, solver: Solver, res: tuple[Array, PyTree], v: Array
+    f: Callable, solver: FixedPointSolver, res: tuple[Array, PyTree], v: Array
 ) -> tuple[Array, PyTree]:
     """Use the maths notations from the jax tutorial on implicit diff."""
     x_star, a = res

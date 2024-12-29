@@ -7,7 +7,7 @@ from beartype import beartype
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree, jaxtyped
 
 from .implicit import fixed_point
-from .solvers import Solver
+from .solvers import FixedPointSolver
 
 
 class ConvNet(eqx.Module):
@@ -39,7 +39,7 @@ class ConvNet(eqx.Module):
 
     @jaxtyped(typechecker=beartype)
     def __call__(
-        self, x: Float[Array, "height width"], solver: Solver
+        self, x: Float[Array, "height width"], solver: FixedPointSolver
     ) -> tuple[Float[Array, " n_classes"], Array, Array]:
         x = einops.rearrange(x, "h w -> 1 h w")
         x_proj = self.project(x)

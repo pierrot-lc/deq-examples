@@ -12,8 +12,8 @@ from wandb.data_types import WBValue
 from wandb.wandb_run import Run
 
 from .datasets import MNISTDataset
-from .solvers import Solver
 from .model import ConvNet
+from .solvers import FixedPointSolver
 
 
 class Trainer(eqx.Module):
@@ -22,7 +22,7 @@ class Trainer(eqx.Module):
     eval_iters: int
     gamma: float
     optimizer: optax.GradientTransformation
-    solver: Solver
+    solver: FixedPointSolver
     total_iters: int
 
     def train(

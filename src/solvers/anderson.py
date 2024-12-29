@@ -1,62 +1,10 @@
 from collections.abc import Callable
-from typing import Any
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
-import optax
 from beartype import beartype
-from jaxtyping import Array, Float, PyTree, Scalar, jaxtyped
-
-
-def fixed_point_iterations(
-    f: Callable, x: Array, n_iterations: int, *args: list[Any]
-) -> Array:
-    def body_fn(_: Any, x: Array) -> Array:
-        return f(x, *args)
-
-    return jax.lax.fori_loop(0, n_iterations, body_fn, init_val=x)
-
-
-def neumann_series(f: Callable, x: Array, n_iterations: int) -> Array:
-    """Compute the Neumann series of f at x.
-
-    ---
-    Sources:
-        https://en.wikipedia.org/wiki/Neumann_series
-    """
-
-    def body_fn(_: Any, carry: tuple[Array, Array]) -> tuple[Array, Array]:
-        x, sum = carry
-        x = f(x)
-        return x, sum + x
-
-    _, x = jax.lax.fori_loop(
-        0,
-        n_iterations,
-        body_fn,
-        init_val=(x, x),
-    )
-    return x
-
-
-def lstsq_gd(f: Callable, y: Array, n_iterations: int, lr: float) -> Array:
-    """Solve the least-squares problem using gradient descent iterations."""
-    fT = jax.linear_transpose(f, y)
-
-    def body_fn(_: Any, carry: tuple[Array, Array]) -> tuple[Array, Array]:
-        y, x = carry
-        (grad,) = fT(f(x) - y)
-        return y, x - lr * grad
-
-    _, x = jax.lax.fori_loop(
-        0,
-        n_iterations,
-        body_fn,
-        init_val=(y, jnp.zeros_like(y)),
-    )
-    return x
+from jaxtyping import Array, Float, jaxtyped
 
 
 @jaxtyped(typechecker=beartype)
@@ -167,57 +115,3 @@ def anderson_acceleration(
     F = G - X
     X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
     return X[(n_iterations + 1) % m].reshape(x_shape)
-
-
-def root_lbfgs(f: Callable, x: PyTree, n_iterations: int, *args: list[Any]) -> PyTree:
-    """Root solver using L-BFGS.
-
-    ---
-    Args:
-        f: The function for which we want to find the root.
-        x: Initial guess.
-        n_iterations: Number of L-BFGS steps.
-        *args: Extra args for `f`. Typically coming from `jax.closure_convert`.
-
-    ---
-    Returns:
-        The estimated root.
-
-    ---
-    Sources:
-        Optax tutorial: https://optax.readthedocs.io/en/stable/_collections/examples/lbfgs.html#l-bfgs-solver
-    """
-    optimizer = optax.lbfgs()
-
-    def loss_fn(x: PyTree) -> Scalar:
-        x_root = f(x, *args)
-        return optax.tree_utils.tree_l2_norm(x_root)
-
-    value_and_grad_fn = optax.value_and_grad_from_state(loss_fn)
-
-    def body_fn(_: Any, carry: tuple[Array, optax.OptState]) -> tuple:
-        x, opt_state = carry
-
-        value, grad = value_and_grad_fn(x, state=opt_state)
-        updates, opt_state = optimizer.update(
-            grad, opt_state, x, value=value, grad=grad, value_fn=loss_fn
-        )
-        x = optax.apply_updates(x, updates)
-
-        return x, opt_state
-
-    x_star, _ = jax.lax.fori_loop(
-        0, n_iterations, body_fn, init_val=(x, optimizer.init(x))
-    )
-    return x_star
-
-
-class Solver(eqx.Module):
-    n_iterations: int = eqx.field(static=True)
-    anderson_m: int = eqx.field(static=True)
-    anderson_b: float = eqx.field(static=True)
-
-    def __call__(self, f: Callable, x: Array) -> Array:
-        return anderson_acceleration(
-            f, x, self.n_iterations, self.anderson_m, self.anderson_b
-        )
