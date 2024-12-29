@@ -34,6 +34,7 @@ def main(dict_config: DictConfig):
             raise ValueError(f"Unknown optimizer: {config.optimizer.name}")
 
     solver = FixedPointSolver(
+        config.implicit.name,
         config.implicit.n_iterations,
         config.implicit.anderson_m,
         config.implicit.anderson_b,

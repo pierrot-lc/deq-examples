@@ -23,7 +23,7 @@ class FixedPointSolver(eqx.Module):
                 return anderson_acceleration(
                     f, x, self.n_iterations, self.anderson_m, self.anderson_b
                 )
-            case "fixed_point":
+            case "fixed-point":
                 return fixed_point_iterations(f, x, self.n_iterations)
             case "lbfgs":
                 return root_lbfgs(lambda x: f(x) - x, x, self.n_iterations)
