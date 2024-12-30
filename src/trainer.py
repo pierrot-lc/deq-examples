@@ -62,7 +62,7 @@ class Trainer(eqx.Module):
                     "train": self.eval(model, train_dataset, key=next(keys)),
                     "test": self.eval(model, test_dataset, key=next(keys)),
                 }
-                print(metrics)
+                # print(metrics)
                 logger.log(metrics, step=iter_id)
 
             model, opt_state = self.batch_update(model, x, y, opt_state, next(keys))

@@ -96,6 +96,7 @@ def anderson_acceleration(
         dG = jnp.roll(G, shift=-1, axis=0) - G
         dF = jnp.roll(F, shift=-1, axis=0) - F
 
+        # TODO: Better Q/R update.
         Q, R = jnp.linalg.qr(dF.T)
         gammas = lstsq_qr(Q, R, fk, lambda_=1e-3)
         # gammas, *_ = jnp.linalg.lstsq(dF.T, fk)
@@ -114,4 +115,4 @@ def anderson_acceleration(
     G = jax.vmap(f_flatten)(X)
     F = G - X
     X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
-    return X[(n_iterations + 1) % m].reshape(x_shape)
+    return X[n_iterations % m].reshape(x_shape)
