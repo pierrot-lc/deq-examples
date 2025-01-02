@@ -105,12 +105,7 @@ class Trainer(eqx.Module):
         key: PRNGKeyArray,
     ) -> tuple[ConvNet, optax.OptState]:
         def batch_loss(model: ConvNet) -> Scalar:
-            stats = ImplicitStats(
-                forward=self.solver.init_stats(), backward=self.solver.init_stats()
-            )
-            y_hat = eqx.filter_vmap(model, in_axes=(0, None, None))(
-                x, self.solver, stats
-            )
+            y_hat = eqx.filter_vmap(model)(x, self.solver)
             losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
             return losses.mean()
 
@@ -130,29 +125,13 @@ class Trainer(eqx.Module):
         y: Int[Array, " batch_size"],
         key: PRNGKeyArray,
     ) -> dict[str, Float[Array, " batch_size"]]:
-        def extract_stats(
-            x: Float[Array, "height width"],
-        ) -> tuple[Float[Array, " n_classes"], ImplicitStats]:
-            """Extract solver statistics of the given sample.
-
-            Do a forward and backward pass to extract both the forward values and the
-            solver statistics. The solver statistics are extracted by asking for the vjp
-            w.r.t. the input statistics. This is a hack that allows us to pass values
-            computed during both forward and backward pass.
-            """
-            stats = ImplicitStats(
-                forward=self.solver.init_stats(), backward=self.solver.init_stats()
-            )
-            y_hat, stats_vjp = jax.vjp(lambda s: model(x, self.solver, s), stats)
-            (stats,) = stats_vjp(y_hat)
-            return y_hat, stats
-
-        y_hat, stats = eqx.filter_vmap(extract_stats)(x)
+        y_hat = eqx.filter_vmap(model)(x, self.solver)
+        stats = eqx.filter_vmap(model.solver_stats)(x, self.solver)
         return {
             "loss": optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y),
             "acc": (y_hat.argmax(axis=1) == y).astype(float),
-            "forward-root": stats["forward"]["roots"][:, -1],
-            "backward-root": stats["backward"]["roots"][:, -1],
+            "forward-root": stats["forward"],
+            "backward-root": stats["backward"],
         }
 
     @staticmethod

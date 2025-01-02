@@ -6,22 +6,16 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PyTree
 
-SolverStats = dict[str, Array]
-
 
 class ImplicitStats(TypedDict):
-    forward: SolverStats
-    backward: SolverStats
+    forward: Array
+    backward: Array
 
 
 class FixedPointSolver(Protocol):
     """Abstract implementation of what a fixed point solver should look like."""
 
-    def init_stats(self) -> SolverStats:
-        """Initialize empty stats, to be filled by the solver."""
-        ...
-
-    def __call__(self, f: Callable, x: Array) -> tuple[Array, SolverStats]:
+    def __call__(self, f: Callable, x: Array) -> Array:
         """Find the fixed point of `f`.
 
         ---
@@ -31,9 +25,7 @@ class FixedPointSolver(Protocol):
 
         ---
         Returns:
-            A tuple containing:
-                x_star: Estimated fixed point by the solver.
-                stats: A dictionnary of statistics from the solver.
+            The estimated fixed point by the solver.
         """
         ...
 
@@ -65,15 +57,17 @@ def fixed_point(
     Sources:
         https://jax.readthedocs.io/en/latest/notebooks/Custom_derivative_rules_for_Python_code.html#implicit-function-differentiation-of-iterative-implementations
     """
-    x_star, _ = solver(lambda x: f(x, a), x)
+    x_star = solver(lambda x: f(x, a), x)
     return x_star
 
 
 def fixed_point_fwd(
     f: Callable, solver: FixedPointSolver, x: Array, a: PyTree, stats: ImplicitStats
 ) -> tuple[Array, tuple[Array, PyTree, ImplicitStats]]:
-    x_star, forward_stats = solver(lambda x: f(x, a), x)
-    stats = ImplicitStats(forward=forward_stats, backward=stats["backward"])
+    x_star = solver(lambda x: f(x, a), x)
+    eps = x_star - f(x_star, a)
+    eps = jnp.linalg.norm(eps.flatten())
+    stats = ImplicitStats(forward=eps, backward=stats["backward"])
     return x_star, (x_star, a, stats)
 
 
@@ -88,8 +82,10 @@ def fixed_point_bwd(
     _, A = jax.vjp(lambda x: f(x, a), x_star)
     _, B = jax.vjp(lambda a: f(x_star, a), a)
 
-    w, backward_stats = solver(lambda w: v + A(w)[0], v)
-    stats = ImplicitStats(forward=stats["forward"], backward=backward_stats)
+    w = solver(lambda w: v + A(w)[0], v)
+    eps = w - (v + A(w)[0])
+    eps = jnp.linalg.norm(eps.flatten())
+    stats = ImplicitStats(forward=stats["forward"], backward=eps)
     (a_bar,) = B(w)
     return jnp.zeros_like(x_star), a_bar, stats
 

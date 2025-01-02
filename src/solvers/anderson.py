@@ -7,8 +7,6 @@ import jax.scipy as jsp
 from beartype import beartype
 from jaxtyping import Array, Float, jaxtyped
 
-from ..implicit import SolverStats
-
 
 @jaxtyped(typechecker=beartype)
 def lstsq_qr(
@@ -63,7 +61,7 @@ def lstsq_qr(
 
 def anderson_acceleration(
     f: Callable, x0: Array, n_iterations: int, m: int, beta: float
-) -> tuple[Array, SolverStats]:
+) -> Array:
     """Use Anderson acceleration to find the fixed point of f.
 
     ---
@@ -89,8 +87,8 @@ def anderson_acceleration(
     f_flatten = lambda x: f(x.reshape(x_shape)).flatten()
     x0 = x0.flatten()
 
-    def body_fn(k: int, carry: tuple[Array, Array, Array, SolverStats]) -> tuple:
-        X, G, F, stats = carry
+    def body_fn(k: int, carry: tuple[Array, Array, Array]) -> tuple:
+        X, G, F = carry
         gk, fk = G[k % m], F[k % m]
 
         dG = jnp.roll(G, shift=-1, axis=0) - G
@@ -107,20 +105,15 @@ def anderson_acceleration(
         X = X.at[(k + 1) % m].set(xkp1)
         G = G.at[(k + 1) % m].set(gkp1)
         F = F.at[(k + 1) % m].set(gkp1 - xkp1)
-        stats["roots"] = stats["roots"].at[k].set(jnp.linalg.norm(gkp1 - xkp1))
-
-        return X, G, F, stats
+        return X, G, F
 
     (h,) = x0.shape
     X = jnp.zeros((m, h), x0.dtype)
     X = X.at[0].set(x0)
     G = jax.vmap(f_flatten)(X)
     F = G - X
-    stats: SolverStats = {"roots": jnp.zeros((n_iterations,), float)}
-    X, *_, stats = jax.lax.fori_loop(
-        0, n_iterations, body_fn, init_val=(X, G, F, stats)
-    )
-    return X[n_iterations % m].reshape(x_shape), stats
+    X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
+    return X[n_iterations % m].reshape(x_shape)
 
 
 class AndersonSolver(eqx.Module):
@@ -128,10 +121,7 @@ class AndersonSolver(eqx.Module):
     m: int = eqx.field(static=True)
     beta: float = eqx.field(static=True)
 
-    def init_stats(self) -> SolverStats:
-        return {"roots": jnp.zeros((self.n_iterations,), float)}
-
-    def __call__(self, f: Callable, x: Array) -> tuple[Array, SolverStats]:
+    def __call__(self, f: Callable, x: Array) -> Array:
         return anderson_acceleration(f, x, self.n_iterations, self.m, self.beta)
 
     def __post_init__(self):
