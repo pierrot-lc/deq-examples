@@ -12,8 +12,8 @@ from wandb.data_types import WBValue
 from wandb.wandb_run import Run
 
 from .datasets import MNISTDataset
+from .implicit import FixedPointSolver, ImplicitStats
 from .model import ConvNet
-from .solvers import FixedPointSolver
 
 
 class Trainer(eqx.Module):
@@ -105,14 +105,14 @@ class Trainer(eqx.Module):
         key: PRNGKeyArray,
     ) -> tuple[ConvNet, optax.OptState]:
         def batch_loss(model: ConvNet) -> Scalar:
-            y_hat, x_eq, _ = eqx.filter_vmap(model)(x, self.solver)
-            losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
-
-            reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(
-                model.deq, x_eq, jr.split(key, len(y))
+            stats = ImplicitStats(
+                forward=self.solver.init_stats(), backward=self.solver.init_stats()
             )
-            reg = jnp.mean(reg) / jnp.prod(jnp.array(x_eq.shape[1:]))
-            return losses.mean() + self.gamma * reg
+            y_hat = eqx.filter_vmap(model, in_axes=(0, None, None))(
+                x, self.solver, stats
+            )
+            losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
+            return losses.mean()
 
         grads = eqx.filter_grad(batch_loss)(model)
         updates, opt_state = self.optimizer.update(
@@ -130,19 +130,29 @@ class Trainer(eqx.Module):
         y: Int[Array, " batch_size"],
         key: PRNGKeyArray,
     ) -> dict[str, Float[Array, " batch_size"]]:
-        y_hat, x_eq, x_root = eqx.filter_vmap(model)(x, self.solver)
-        x_root = x_root.reshape((len(x_root), -1))
+        def extract_stats(
+            x: Float[Array, "height width"],
+        ) -> tuple[Float[Array, " n_classes"], ImplicitStats]:
+            """Extract solver statistics of the given sample.
 
-        reg = eqx.filter_vmap(Trainer.hutchinson_estimate, in_axes=(None, 0, 0))(
-            model.deq, x_eq, jr.split(key, len(y))
-        )
-        reg = reg / jnp.prod(jnp.array(x_eq.shape[1:]))
+            Do a forward and backward pass to extract both the forward values and the
+            solver statistics. The solver statistics are extracted by asking for the vjp
+            w.r.t. the input statistics. This is a hack that allows us to pass values
+            computed during both forward and backward pass.
+            """
+            stats = ImplicitStats(
+                forward=self.solver.init_stats(), backward=self.solver.init_stats()
+            )
+            y_hat, stats_vjp = jax.vjp(lambda s: model(x, self.solver, s), stats)
+            (stats,) = stats_vjp(y_hat)
+            return y_hat, stats
 
+        y_hat, stats = eqx.filter_vmap(extract_stats)(x)
         return {
             "loss": optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y),
-            "jac-reg": reg,
             "acc": (y_hat.argmax(axis=1) == y).astype(float),
-            "root": jnp.max(jnp.abs(x_root), axis=1),
+            "forward-root": stats["forward"]["roots"][:, -1],
+            "backward-root": stats["backward"]["roots"][:, -1],
         }
 
     @staticmethod
@@ -185,9 +195,9 @@ class Trainer(eqx.Module):
 
         ---
         Args:
-            f: The function f.
-            x: The point to which evaluate the jacobian.
-            key: Some random key used for the estimate.
+            f: Function f.
+            x: Point to which evaluate the jacobian.
+            key: Random key used for the estimate.
 
         ---
         Returns:

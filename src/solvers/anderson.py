@@ -1,10 +1,13 @@
 from collections.abc import Callable
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 from beartype import beartype
 from jaxtyping import Array, Float, jaxtyped
+
+from ..implicit import SolverStats
 
 
 @jaxtyped(typechecker=beartype)
@@ -60,7 +63,7 @@ def lstsq_qr(
 
 def anderson_acceleration(
     f: Callable, x0: Array, n_iterations: int, m: int, beta: float
-) -> Array:
+) -> tuple[Array, SolverStats]:
     """Use Anderson acceleration to find the fixed point of f.
 
     ---
@@ -81,16 +84,13 @@ def anderson_acceleration(
         Implem details from the same author: https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf
         Easier pseudo-code: https://ctk.math.ncsu.edu/TALKS/Anderson.pdf
     """
-    assert m > 2
-    assert 0 < beta <= 1
-
     # Flattened version of f.
     x_shape = x0.shape
     f_flatten = lambda x: f(x.reshape(x_shape)).flatten()
     x0 = x0.flatten()
 
-    def body_fn(k: int, carry: tuple[Array, Array, Array]) -> tuple:
-        X, G, F = carry
+    def body_fn(k: int, carry: tuple[Array, Array, Array, SolverStats]) -> tuple:
+        X, G, F, stats = carry
         gk, fk = G[k % m], F[k % m]
 
         dG = jnp.roll(G, shift=-1, axis=0) - G
@@ -107,12 +107,34 @@ def anderson_acceleration(
         X = X.at[(k + 1) % m].set(xkp1)
         G = G.at[(k + 1) % m].set(gkp1)
         F = F.at[(k + 1) % m].set(gkp1 - xkp1)
-        return X, G, F
+        stats["roots"] = stats["roots"].at[k].set(jnp.linalg.norm(gkp1 - xkp1))
+
+        return X, G, F, stats
 
     (h,) = x0.shape
     X = jnp.zeros((m, h), x0.dtype)
     X = X.at[0].set(x0)
     G = jax.vmap(f_flatten)(X)
     F = G - X
-    X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
-    return X[n_iterations % m].reshape(x_shape)
+    stats: SolverStats = {"roots": jnp.zeros((n_iterations,), float)}
+    X, *_, stats = jax.lax.fori_loop(
+        0, n_iterations, body_fn, init_val=(X, G, F, stats)
+    )
+    return X[n_iterations % m].reshape(x_shape), stats
+
+
+class AndersonSolver(eqx.Module):
+    n_iterations: int = eqx.field(static=True)
+    m: int = eqx.field(static=True)
+    beta: float = eqx.field(static=True)
+
+    def init_stats(self) -> SolverStats:
+        return {"roots": jnp.zeros((self.n_iterations,), float)}
+
+    def __call__(self, f: Callable, x: Array) -> tuple[Array, SolverStats]:
+        return anderson_acceleration(f, x, self.n_iterations, self.m, self.beta)
+
+    def __post_init__(self):
+        assert self.n_iterations > 0
+        assert self.m > 2
+        assert 0.0 < self.beta <= 1.0

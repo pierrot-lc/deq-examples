@@ -1,1 +1,1 @@
-from .solvers import FixedPointSolver
+from .anderson import AndersonSolver
