@@ -43,7 +43,7 @@ def main(dict_config: DictConfig):
         config.trainer.batch_size,
         config.trainer.eval_freq,
         config.trainer.eval_iters,
-        config.trainer.gamma,
+        config.trainer.lambda_reg,
         optimizer,
         solver,
         config.trainer.total_iters,

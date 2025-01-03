@@ -52,7 +52,7 @@ class TrainerConfig:
     batch_size: int
     eval_freq: int
     eval_iters: int
-    gamma: float
+    lambda_reg: float
     key: PRNGKeyArray
     total_iters: int
 

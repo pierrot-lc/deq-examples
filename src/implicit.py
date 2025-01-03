@@ -2,9 +2,11 @@ from collections.abc import Callable
 from functools import partial
 from typing import Protocol, TypedDict
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 from jaxtyping import Array, PyTree
+from .solvers.neumann import neumann_series
 
 
 class ImplicitStats(TypedDict):
@@ -82,7 +84,9 @@ def fixed_point_bwd(
     _, A = jax.vjp(lambda x: f(x, a), x_star)
     _, B = jax.vjp(lambda a: f(x_star, a), a)
 
-    w = solver(lambda w: v + A(w)[0], v)
+    # NOTE: The initial guess is initialized to 0 as is done in torchdeq.
+    # https://github.com/locuslab/torchdeq/blob/main/torchdeq/grad.py#L143
+    w = solver(lambda w: v + A(w)[0], jnp.zeros_like(v))
     eps = w - (v + A(w)[0])
     eps = jnp.linalg.norm(eps.flatten())
     stats = ImplicitStats(forward=stats["forward"], backward=eps)
@@ -90,4 +94,23 @@ def fixed_point_bwd(
     return jnp.zeros_like(x_star), a_bar, stats
 
 
-fixed_point.defvjp(fixed_point_fwd, fixed_point_bwd)
+def fixed_point_bwd_neumann(
+    f: Callable,
+    _: FixedPointSolver,
+    res: tuple[Array, PyTree, ImplicitStats],
+    v: Array,
+) -> tuple[Array, PyTree, ImplicitStats]:
+    """Compute vjp using the jacobian-free formulation."""
+    x_star, a, stats = res
+    _, A = jax.vjp(lambda x: f(x, a), x_star)
+    _, B = jax.vjp(lambda a: f(x_star, a), a)
+
+    w = neumann_series(lambda v: A(v)[0], v, n_iterations=5)
+    eps = w - (v + A(w)[0])
+    eps = jnp.linalg.norm(eps.flatten())
+    stats = ImplicitStats(forward=stats["forward"], backward=eps)
+    (a_bar,) = B(w)
+    return jnp.zeros_like(x_star), a_bar, stats
+
+
+fixed_point.defvjp(fixed_point_fwd, fixed_point_bwd_neumann)

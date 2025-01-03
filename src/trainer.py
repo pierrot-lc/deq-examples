@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 
 import equinox as eqx
 import jax
@@ -12,7 +12,7 @@ from wandb.data_types import WBValue
 from wandb.wandb_run import Run
 
 from .datasets import MNISTDataset
-from .implicit import FixedPointSolver, ImplicitStats
+from .implicit import FixedPointSolver
 from .model import ConvNet
 
 
@@ -20,7 +20,7 @@ class Trainer(eqx.Module):
     batch_size: int
     eval_freq: int
     eval_iters: int
-    gamma: float
+    lambda_reg: float
     optimizer: optax.GradientTransformation
     solver: FixedPointSolver
     total_iters: int
@@ -104,10 +104,12 @@ class Trainer(eqx.Module):
         opt_state: optax.OptState,
         key: PRNGKeyArray,
     ) -> tuple[ConvNet, optax.OptState]:
+        """Update the model using the given batch."""
         def batch_loss(model: ConvNet) -> Scalar:
-            y_hat = eqx.filter_vmap(model)(x, self.solver)
+            keys = jr.split(key, len(x))
+            y_hat, jac_regs = eqx.filter_vmap(model)(x, self.solver, keys)
             losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
-            return losses.mean()
+            return losses.mean() + self.lambda_reg * jac_regs.mean()
 
         grads = eqx.filter_grad(batch_loss)(model)
         updates, opt_state = self.optimizer.update(
@@ -125,10 +127,13 @@ class Trainer(eqx.Module):
         y: Int[Array, " batch_size"],
         key: PRNGKeyArray,
     ) -> dict[str, Float[Array, " batch_size"]]:
-        y_hat = eqx.filter_vmap(model)(x, self.solver)
-        stats = eqx.filter_vmap(model.solver_stats)(x, self.solver)
+        """Compute metrics for the given batch."""
+        keys = jr.split(key, len(x))
+        y_hat, jac_regs = eqx.filter_vmap(model)(x, self.solver, keys)
+        stats = eqx.filter_vmap(model.solver_stats)(x, self.solver, keys)
         return {
             "loss": optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y),
+            "jacobian-reg": jac_regs,
             "acc": (y_hat.argmax(axis=1) == y).astype(float),
             "forward-root": stats["forward"],
             "backward-root": stats["backward"],
@@ -167,25 +172,3 @@ class Trainer(eqx.Module):
         while True:
             key, sk = jr.split(key)
             yield sk
-
-    @staticmethod
-    def hutchinson_estimate(f: Callable, x: Array, key: PRNGKeyArray) -> Array:
-        """Estimate the trace of the jacobian of f evaluated at x.
-
-        ---
-        Args:
-            f: Function f.
-            x: Point to which evaluate the jacobian.
-            key: Random key used for the estimate.
-
-        ---
-        Returns:
-            The trace estimate: tr(Jf(x) @ Jf(x).T).
-
-        ---
-        Sources:
-            Paper: https://proceedings.mlr.press/v139/bai21b.html
-        """
-        eps = jr.normal(key, x.shape)
-        (_, estimate) = jax.jvp(f, primals=(x,), tangents=(eps,))
-        return jnp.sum(estimate**2)

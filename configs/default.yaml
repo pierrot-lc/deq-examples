@@ -8,9 +8,9 @@ dataset:
 
 implicit:
   name: "anderson"
-  n_iterations: 100
-  anderson_m: 5
-  anderson_b: 0.5
+  n_iterations: 50
+  anderson_m: 3
+  anderson_b: 0.9
 
 model:
   n_channels: 12
@@ -22,10 +22,10 @@ optimizer:
   name: adamw
 
 trainer:
-  batch_size: 16
+  batch_size: 32
   eval_freq: 100
   eval_iters: 5
-  gamma: 0.00
+  lambda_reg: 0.01
   key: 0
   total_iters: 10_000
 
