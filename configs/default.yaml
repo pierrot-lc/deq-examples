@@ -7,8 +7,13 @@ dataset:
   train_path: ./data/mnist/train/
 
 implicit:
-  name: "anderson"
-  n_iterations: 50
+  fwd_solver: anderson
+  fwd_iterations: 50
+  fwd_init: random
+
+  bwd_solver: neumann
+  bwd_iterations: 3
+
   anderson_m: 3
   anderson_b: 0.9
 
@@ -18,15 +23,15 @@ model:
   key: 0
 
 optimizer:
-  learning_rate: 1e-2
+  learning_rate: 1e-3
   name: adamw
 
 trainer:
   batch_size: 32
   eval_freq: 100
   eval_iters: 5
-  lambda_reg: 0.01
   key: 0
+  lambda_reg: 0.1
   total_iters: 10_000
 
 wandb:

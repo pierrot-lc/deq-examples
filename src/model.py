@@ -2,12 +2,10 @@ import einops
 import equinox as eqx
 import equinox.nn as nn
 import jax
-import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, Float, PRNGKeyArray, PyTree, Scalar
 
-from .implicit import FixedPointSolver, ImplicitStats, fixed_point
-from .loss import jac_reg
+from .implicit import FixedPointSolver, ImplicitStats
 
 
 class ConvNet(eqx.Module):
@@ -48,7 +46,8 @@ class ConvNet(eqx.Module):
         x: Float[Array, "height width"],
         solver: FixedPointSolver,
         key: PRNGKeyArray,
-    ) -> tuple[Float[Array, " n_classes"], Scalar]:
+        solver_stats: bool = False,
+    ) -> tuple[Float[Array, " n_classes"], Scalar, ImplicitStats | None]:
         """Predict the class of the input image.
 
         ---
@@ -56,57 +55,28 @@ class ConvNet(eqx.Module):
             x: Input image.
             solver: Fixed point solver for DEQ forward/backward pass.
             key: Random key used for jacobian regularization.
+            solver_stats: Whether to return solver's statistics for this sample.
+                Returning solver's statistics require vjp computations.
 
         ---
         Returns:
-            The classes probabilities and the jacobian regularization estimate.
+            The classes probabilities, the jacobian regularization estimate and
+            optionally the solver's statistics.
         """
         x = einops.rearrange(x, "h w -> 1 h w")
         x = self.project(x)
-        stats = ImplicitStats(forward=jnp.array(0.0), backward=jnp.array(0.0))
-        x, reg = self.solve_deq(x, solver, stats, key)
-        x = einops.reduce(x, "c h w -> c", "mean")
-        return self.classify(x), reg
 
-    def solve_deq(
-        self,
-        x: Array,
-        solver: FixedPointSolver,
-        stats: ImplicitStats,
-        key: PRNGKeyArray,
-    ) -> tuple[Array, Scalar]:
-        """Find the DEQ fixed point and compute the related jacobian regularization."""
+        # NOTE: The function `f` needs to capture all static parameters in its closure.
+        # The rest is passed as dynamic parameters in `a`.
         params, static = eqx.partition(self.deq, eqx.is_array)
 
         def f(x: Array, a: PyTree) -> Array:
-            params, x_init = a
+            params, x_inject = a
             deq = eqx.combine(params, static)
-            return deq(x) + x_init
+            return deq(x) + x_inject
 
-        key1, key2 = jr.split(key)
-        a = (params, x)
-        x0 = jr.normal(key1, x.shape)
-        x_star = fixed_point(f, solver, x0, a, stats)
-        reg = jac_reg(lambda x: f(x, a), x_star, key2)
-        return x_star, reg
+        x, reg, stats = solver(f, x, (params, x), key, solver_stats)
 
-    def solver_stats(
-        self,
-        x: Float[Array, "height width"],
-        solver: FixedPointSolver,
-        key: PRNGKeyArray,
-    ) -> ImplicitStats:
-        """Extract solver statistics of the given sample.
-
-        The solver statistics are extracted by asking for the vjp w.r.t. the input
-        statistics. This is a hack that allows us to pass values computed during both
-        forward and backward pass.
-        """
-        x = einops.rearrange(x, "h w -> 1 h w")
-        x = self.project(x)
-        stats = ImplicitStats(forward=jnp.array(0.0), backward=jnp.array(0.0))
-        (x_star, reg), stats_vjp = jax.vjp(
-            lambda s: self.solve_deq(x, solver, s, key), stats
-        )
-        (stats,) = stats_vjp((x_star, reg))
-        return stats
+        x = einops.reduce(x, "c h w -> c", "mean")
+        y = self.classify(x)
+        return y, reg, stats

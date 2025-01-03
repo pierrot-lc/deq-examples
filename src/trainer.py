@@ -107,7 +107,7 @@ class Trainer(eqx.Module):
         """Update the model using the given batch."""
         def batch_loss(model: ConvNet) -> Scalar:
             keys = jr.split(key, len(x))
-            y_hat, jac_regs = eqx.filter_vmap(model)(x, self.solver, keys)
+            y_hat, jac_regs, _ = eqx.filter_vmap(model)(x, self.solver, keys)
             losses = optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y)
             return losses.mean() + self.lambda_reg * jac_regs.mean()
 
@@ -129,8 +129,7 @@ class Trainer(eqx.Module):
     ) -> dict[str, Float[Array, " batch_size"]]:
         """Compute metrics for the given batch."""
         keys = jr.split(key, len(x))
-        y_hat, jac_regs = eqx.filter_vmap(model)(x, self.solver, keys)
-        stats = eqx.filter_vmap(model.solver_stats)(x, self.solver, keys)
+        y_hat, jac_regs, stats = eqx.filter_vmap(model)(x, self.solver, keys, True)
         return {
             "loss": optax.losses.softmax_cross_entropy_with_integer_labels(y_hat, y),
             "jacobian-reg": jac_regs,

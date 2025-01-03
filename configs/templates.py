@@ -25,8 +25,14 @@ class DatasetConfig:
 
 @dataclass
 class ImplicitConfig:
-    name: str
-    n_iterations: int
+    fwd_solver: str
+    fwd_iterations: int
+    fwd_init: str
+
+    bwd_solver: str
+    bwd_iterations: int
+
+    # Anderson specifics.
     anderson_m: int
     anderson_b: float
 
@@ -52,8 +58,8 @@ class TrainerConfig:
     batch_size: int
     eval_freq: int
     eval_iters: int
-    lambda_reg: float
     key: PRNGKeyArray
+    lambda_reg: float
     total_iters: int
 
     def __post_init__(self):

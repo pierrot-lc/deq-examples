@@ -82,6 +82,10 @@ def anderson_acceleration(
         Implem details from the same author: https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf
         Easier pseudo-code: https://ctk.math.ncsu.edu/TALKS/Anderson.pdf
     """
+    assert n_iterations > 0
+    assert m > 2
+    assert 0.0 < beta <= 1.0
+
     # Flattened version of f.
     x_shape = x0.shape
     f_flatten = lambda x: f(x.reshape(x_shape)).flatten()
@@ -114,17 +118,3 @@ def anderson_acceleration(
     F = G - X
     X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
     return X[n_iterations % m].reshape(x_shape)
-
-
-class AndersonSolver(eqx.Module):
-    n_iterations: int = eqx.field(static=True)
-    m: int = eqx.field(static=True)
-    beta: float = eqx.field(static=True)
-
-    def __call__(self, f: Callable, x: Array) -> Array:
-        return anderson_acceleration(f, x, self.n_iterations, self.m, self.beta)
-
-    def __post_init__(self):
-        assert self.n_iterations > 0
-        assert self.m > 2
-        assert 0.0 < self.beta <= 1.0
