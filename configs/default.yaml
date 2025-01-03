@@ -27,12 +27,12 @@ optimizer:
   name: adamw
 
 trainer:
-  batch_size: 32
+  batch_size: 16
   eval_freq: 100
   eval_iters: 5
   key: 0
   lambda_reg: 0.1
-  total_iters: 10_000
+  total_iters: 100_000
 
 wandb:
   entity: pierrotlc
