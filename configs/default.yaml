@@ -7,14 +7,14 @@ dataset:
   train_path: ./data/mnist/train/
 
 implicit:
-  fwd_solver: anderson
-  fwd_iterations: 50
+  fwd_solver: lbfgs
+  fwd_iterations: 100
   fwd_init: random
 
   bwd_solver: neumann
   bwd_iterations: 3
 
-  anderson_m: 3
+  anderson_m: 5
   anderson_b: 0.9
 
 model:

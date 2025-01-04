@@ -8,7 +8,12 @@ import jax.numpy as jnp
 import jax.random as jr
 from jaxtyping import Array, PRNGKeyArray, PyTree, Scalar
 
-from .solvers import anderson_acceleration, fixed_point_iterations, neumann_series
+from .solvers import (
+    anderson_acceleration,
+    fixed_point_iterations,
+    neumann_series,
+    root_lbfgs,
+)
 
 
 class ImplicitStats(TypedDict):
@@ -51,7 +56,7 @@ class FixedPointSolver(eqx.Module):
             case "random":
                 x = jr.normal(key1, x.shape)
             case _:
-                raise ValueError("Unkown init")
+                raise ValueError("Unknown init")
 
         x_star = FixedPointSolver._fixed_point(self, f, x, a, stats)
         jac_reg = FixedPointSolver.jac_reg(lambda x: f(x, a), x_star, key2)
@@ -85,16 +90,26 @@ class FixedPointSolver(eqx.Module):
         Sources:
             https://jax.readthedocs.io/en/latest/notebooks/Custom_derivative_rules_for_Python_code.html#implicit-function-differentiation-of-iterative-implementations
         """
-        return self._fixed_point_solve(
-            lambda x: f(x, a), x, self.fwd_solver, self.fwd_iterations
-        )
+        match self.fwd_solver:
+            case "anderson":
+                return anderson_acceleration(
+                    lambda x: f(x, a),
+                    x,
+                    self.fwd_iterations,
+                    self.anderson_m,
+                    self.anderson_b,
+                )
+            case "lbfgs":
+                return root_lbfgs(lambda x: f(x, a) - x, x, self.fwd_iterations)
+            case "picard":
+                return fixed_point_iterations(lambda x: f(x, a), x, self.fwd_iterations)
+            case _:
+                raise ValueError("Unknown forward solver")
 
     def _fixed_point_fwd(
         self, f: Callable, x: Array, a: PyTree, stats: ImplicitStats
     ) -> tuple[Array, tuple[Array, PyTree, ImplicitStats]]:
-        x_star = self._fixed_point_solve(
-            lambda x: f(x, a), x, self.fwd_solver, self.fwd_iterations
-        )
+        x_star = FixedPointSolver._fixed_point(self, f, x, a, stats)
         eps = x_star - f(x_star, a)
         eps = jnp.linalg.norm(eps.flatten())
         stats = ImplicitStats(forward=eps, backward=stats["backward"])
@@ -107,20 +122,31 @@ class FixedPointSolver(eqx.Module):
         _, A = jax.vjp(lambda x: f(x, a), x_star)
         _, B = jax.vjp(lambda a: f(x_star, a), a)
 
-        # Compute the vector w^T = v.T @ (I - A)^-1.
+        # Compute the vector w^T = v^T @ (I - A)^-1.
+        # Equivalent to the fixed point w^T = v^T + w^T @ A.
+        # NOTE: The initial guess of fixed point solvers is initialized 0 as is done in
+        # torchdeq.
+        # https://github.com/locuslab/torchdeq/blob/main/torchdeq/grad.py#L143
         match self.bwd_solver:
+            case "anderson":
+                w = anderson_acceleration(
+                    lambda w: v + A(w)[0],
+                    jnp.zeros_like(v),
+                    self.bwd_iterations,
+                    self.anderson_m,
+                    self.anderson_b,
+                )
+            case "lbfgs":
+                return root_lbfgs(
+                    lambda w: v + A(w)[0] - w, jnp.zeros_like(v), self.bwd_iterations
+                )
             case "neumann":
                 w = neumann_series(
                     lambda v: A(v)[0], v, n_iterations=self.bwd_iterations
                 )
-            case "anderson" | "picard":
-                # NOTE: The initial guess is initialized to 0 as is done in torchdeq.
-                # https://github.com/locuslab/torchdeq/blob/main/torchdeq/grad.py#L143
-                w = self._fixed_point_solve(
-                    lambda w: v + A(w)[0],
-                    jnp.zeros_like(v),
-                    self.bwd_solver,
-                    self.bwd_iterations,
+            case "picard":
+                w = fixed_point_iterations(
+                    lambda w: v + A(w)[0], jnp.zeros_like(v), self.bwd_iterations
                 )
             case _:
                 raise ValueError("Unknown backward solver")
@@ -134,19 +160,6 @@ class FixedPointSolver(eqx.Module):
         (a_bar,) = B(w)
 
         return jnp.zeros_like(x_star), a_bar, stats
-
-    def _fixed_point_solve(
-        self, f: Callable, x: Array, method: str, n_iterations
-    ) -> Array:
-        match method:
-            case "anderson":
-                return anderson_acceleration(
-                    f, x, n_iterations, self.anderson_m, self.anderson_b
-                )
-            case "picard":
-                return fixed_point_iterations(f, x, n_iterations)
-            case _:
-                raise ValueError(f"Unknown method: {method}")
 
     def _solver_stats(self, f: Callable, x: Array, a: PyTree) -> ImplicitStats:
         """Extract solver statistics of the given sample.
