@@ -60,7 +60,7 @@
 
       env = {
         LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs + ":${cudaDriversLib}";
-        # Tells jax where to find libdevice.10.bc
+        # Tells jax where to find libdevice.10.bc.
         # https://github.com/jax-ml/jax/discussions/6479#discussioncomment-622839
         XLA_FLAGS = "--xla_gpu_cuda_data_dir=${pkgs.cudatoolkit}";
       };
