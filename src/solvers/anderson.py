@@ -64,6 +64,10 @@ def anderson_acceleration(
 ) -> Array:
     """Use Anderson acceleration to find the fixed point of f.
 
+    NOTE: This is not the original implementation. Values of X are bootstrapped by `m`
+    successive calls of f. The differences dG and dF contain an additional entry
+    G(k - m) - G(k) and F(k - m) - F(k).
+
     ---
     Args:
         f: The function for which we want to find the fixed point.
@@ -97,9 +101,6 @@ def anderson_acceleration(
 
         dG = jnp.roll(G, shift=-1, axis=0) - G
         dF = jnp.roll(F, shift=-1, axis=0) - F
-
-        # dG = jnp.delete(dG, k % m)
-        # dF = jnp.delete(dF, k % m)
 
         # TODO: Better Q/R update.
         Q, R = jnp.linalg.qr(dF.T)
