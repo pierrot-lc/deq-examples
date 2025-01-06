@@ -7,7 +7,7 @@ dataset:
   train_path: ./data/mnist/train/
 
 implicit:
-  fwd_solver: lbfgs
+  fwd_solver: anderson
   fwd_iterations: 100
   fwd_init: random
 
@@ -31,7 +31,7 @@ trainer:
   eval_freq: 100
   eval_iters: 5
   key: 0
-  lambda_reg: 0.1
+  lambda_reg: 1.0
   total_iters: 100_000
 
 wandb:

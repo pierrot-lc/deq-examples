@@ -83,7 +83,7 @@ def anderson_acceleration(
         Easier pseudo-code: https://ctk.math.ncsu.edu/TALKS/Anderson.pdf
     """
     assert n_iterations > 0
-    assert m > 2
+    assert m >= 2
     assert 0.0 < beta <= 1.0
 
     # Flattened version of f.
@@ -98,6 +98,9 @@ def anderson_acceleration(
         dG = jnp.roll(G, shift=-1, axis=0) - G
         dF = jnp.roll(F, shift=-1, axis=0) - F
 
+        # dG = jnp.delete(dG, k % m)
+        # dF = jnp.delete(dF, k % m)
+
         # TODO: Better Q/R update.
         Q, R = jnp.linalg.qr(dF.T)
         gammas = lstsq_qr(Q, R, fk, lambda_=1e-3)
@@ -111,10 +114,9 @@ def anderson_acceleration(
         F = F.at[(k + 1) % m].set(gkp1 - xkp1)
         return X, G, F
 
-    (h,) = x0.shape
-    X = jnp.zeros((m, h), x0.dtype)
-    X = X.at[0].set(x0)
-    G = jax.vmap(f_flatten)(X)
-    F = G - X
+    # Initialize X with the first m iterations of f.
+    xk, X = jax.lax.scan(lambda xk, _: (f_flatten(xk), xk), x0, length=m)
+    G = jnp.roll(X, shift=-1, axis=0).at[-1].set(xk)  # Images of X.
+    F = G - X  # Fixed point residuals.
     X, *_ = jax.lax.fori_loop(0, n_iterations, body_fn, init_val=(X, G, F))
     return X[n_iterations % m].reshape(x_shape)
