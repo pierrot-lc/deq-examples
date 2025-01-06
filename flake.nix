@@ -27,15 +27,25 @@
       };
     };
 
+    # General packages.
     python-packages = ps:
       with ps; [
         pip
         setuptools
         virtualenv
       ];
+    packages = [
+      (pkgs.python313.withPackages python-packages)
+      pkgs.cudaPackages.cudatoolkit
+      pkgs.just
+      pkgs.kaggle
+      pkgs.uv
+    ];
 
+    # Necessary libraries.
     libs = [
       pkgs.cudaPackages.cudatoolkit
+      pkgs.cudaPackages.cudnn
       pkgs.stdenv.cc.cc.lib
       pkgs.zlib
     ];
@@ -43,21 +53,17 @@
     # Where your local "libcuda.so" lives. If you're not on NixOS, you should
     # provide the right path (likely another one).
     cudaDriversLib = "/run/opengl-driver/lib";
-
-    fhs = pkgs.buildFHSEnv {
-      name = "deq";
-      targetPkgs = pkgs: [
-        (pkgs.python313.withPackages python-packages)
-        pkgs.cudaPackages.cudatoolkit
-        pkgs.just
-        pkgs.kaggle
-        pkgs.uv
-      ];
-      profile = ''
-        export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libs}:"${cudaDriversLib}"
-      '';
-    };
   in {
-    devShells.${system}.default = fhs.env;
+    devShells.${system}.default = pkgs.mkShell {
+      name = "deq";
+      inherit packages;
+
+      env = {
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs + ":${cudaDriversLib}";
+        # Tells jax where to find libdevice.10.bc
+        # https://github.com/jax-ml/jax/discussions/6479#discussioncomment-622839
+        XLA_FLAGS = "--xla_gpu_cuda_data_dir=${pkgs.cudatoolkit}";
+      };
+    };
   };
 }
