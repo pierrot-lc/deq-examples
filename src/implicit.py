@@ -110,8 +110,10 @@ class FixedPointSolver(eqx.Module):
         self, f: Callable, x: Array, a: PyTree, stats: ImplicitStats
     ) -> tuple[Array, tuple[Array, PyTree, ImplicitStats]]:
         x_star = FixedPointSolver._fixed_point(self, f, x, a, stats)
+        # Compute the relative error as is done in torchdeq.
+        # https://torchdeq.readthedocs.io/en/latest/torchdeq/solver.html#solver-stat
         eps = x_star - f(x_star, a)
-        eps = jnp.linalg.norm(eps.flatten())
+        eps = jnp.linalg.norm(eps.flatten()) / jnp.linalg.norm(x_star.flatten())
         stats = ImplicitStats(forward=eps, backward=stats["backward"])
         return x_star, (x_star, a, stats)
 
@@ -153,7 +155,7 @@ class FixedPointSolver(eqx.Module):
 
         # Compute the solver's performance.
         eps = w - (v + A(w)[0])
-        eps = jnp.linalg.norm(eps.flatten())
+        eps = jnp.linalg.norm(eps.flatten()) / jnp.linalg.norm(w.flatten())
         stats = ImplicitStats(forward=stats["forward"], backward=eps)
 
         # Finish the implicit derivation.
