@@ -34,7 +34,17 @@
         virtualenv
       ];
 
-    fhs = pkgs.buildFHSUserEnv {
+    libs = [
+      pkgs.cudaPackages.cudatoolkit
+      pkgs.stdenv.cc.cc.lib
+      pkgs.zlib
+    ];
+
+    # Where your local "libcuda.so" lives. If you're not on NixOS, you should
+    # provide the right path (likely another one).
+    cudaDriversLib = "/run/opengl-driver/lib";
+
+    fhs = pkgs.buildFHSEnv {
       name = "deq";
       targetPkgs = pkgs: [
         (pkgs.python313.withPackages python-packages)
@@ -43,11 +53,8 @@
         pkgs.kaggle
         pkgs.uv
       ];
-      multiPkgs = pkgs: [
-        pkgs.zlib # Numpy dep.
-      ];
       profile = ''
-        export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
+        export LD_LIBRARY_PATH=${pkgs.lib.makeLibraryPath libs}:"${cudaDriversLib}"
       '';
     };
   in {
