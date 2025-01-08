@@ -2,7 +2,7 @@ import hydra
 import wandb
 from configs import MainConfig
 from omegaconf import DictConfig, OmegaConf
-from optax import adamw
+from optax import adamw, rmsprop
 from src.datasets import MNISTDataset
 from src.model import ConvNet
 from src.implicit import FixedPointSolver
@@ -30,6 +30,8 @@ def main(dict_config: DictConfig):
     match config.optimizer.name:
         case "adamw":
             optimizer = adamw(config.optimizer.learning_rate)
+        case "rmsprop":
+            optimizer = rmsprop(config.optimizer.learning_rate)
         case _:
             raise ValueError(f"Unknown optimizer: {config.optimizer.name}")
 

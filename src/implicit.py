@@ -126,8 +126,7 @@ class FixedPointSolver(eqx.Module):
 
         # Compute the vector w^T = v^T @ (I - A)^-1.
         # Equivalent to the fixed point w^T = v^T + w^T @ A.
-        # NOTE: The initial guess of fixed point solvers is initialized 0 as is done in
-        # torchdeq.
+        # NOTE: The initial guess of fixed point solvers is 0 as is done in torchdeq.
         # https://github.com/locuslab/torchdeq/blob/main/torchdeq/grad.py#L143
         match self.bwd_solver:
             case "anderson":
