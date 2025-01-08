@@ -36,7 +36,6 @@
       ];
     packages = [
       (pkgs.python313.withPackages python-packages)
-      pkgs.cudaPackages.cudatoolkit
       pkgs.just
       pkgs.kaggle
       pkgs.uv
@@ -48,18 +47,18 @@
       pkgs.cudaPackages.cudnn
       pkgs.stdenv.cc.cc.lib
       pkgs.zlib
-    ];
 
-    # Where your local "libcuda.so" lives. If you're not on NixOS, you should
-    # provide the right path (likely another one).
-    cudaDriversLib = "/run/opengl-driver/lib";
+      # Where your local "lib/libcuda.so" lives. If you're not on NixOS, you should
+      # provide the right path (likely another one).
+      "/run/opengl-driver"
+    ];
   in {
     devShells.${system}.default = pkgs.mkShell {
       name = "deq";
       inherit packages;
 
       env = {
-        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs + ":${cudaDriversLib}";
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
         # Tells jax where to find libdevice.10.bc.
         # https://github.com/jax-ml/jax/discussions/6479#discussioncomment-622839
         XLA_FLAGS = "--xla_gpu_cuda_data_dir=${pkgs.cudatoolkit}";
