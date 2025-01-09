@@ -1,6 +1,5 @@
 from collections.abc import Callable
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
